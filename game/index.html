@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<title>HTML/Canvas/3D Game Starter</title>
+		<meta name="description" content="">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+
+		<link rel="stylesheet" href="css/game.css">
+		<link rel="stylesheet" href="css/hint.css">
+		<link rel="stylesheet" href="css/font-awesome.min.css">
+
+		<script src="lib/jquery.min.js"></script>
+		<script src="lib/howler.min.js"></script>
+		<script src="lib/minibars.min.js"></script>
+		<script src="lib/u-pathastar.js"></script>
+		<script src="lib/u-threestage.js"></script>
+		<script src="lib/u-helper.js"></script>
+
+		<script src="js/game.js"></script>
+	</head>
+	<body onunload="Game.quick_save();">
+
+		<nav>
+			HTML/Canvas/3D Game Starter
+		</nav>
+
+		<footer>
+			<div id="frame-rate">0fps</div>
+		</footer>
+
+		<script>
+
+		Stage = {};
+		Geo = {};
+		Mat = {};
+		Things = {};
+		KeyStates = {};
+
+		SLAB_HEIGHT = 1;
+		CELL_SIZE = 3;
+
+		KeyEvents = {};
+
+		</script>
+
+		<script type="module">
+
+		KeyEvents = {
+			w_down : () => {
+				move_player_by(0, 1);
+			},
+			a_down : () => {
+				move_player_by(1, 0);
+			},
+			s_down : () => {
+				move_player_by(0, -1);
+			},
+			d_down : () => {
+				move_player_by(-1, 0);
+			},
+		}
+
+		import { THREE, EffectComposer, Shaders } from './js/pipeline.js';
+
+		//$( window ).on('unload', GameState.save);
+
+		function create_lights(p) {
+			var light = Things.light = new THREE.PointLight( 0xffffff, 1, 100 );
+			light.castShadow = true;
+			light.position.set( -5, -5, -10 );
+			p.add( light );
+			p.add( light.shadow.camera );
+			//Things.light.target.position.set(0,0,0);
+
+			//p.add(new THREE.SpotLightHelper( light, 5 ));
+
+			//p.add(new THREE.CameraHelper( light.shadow.camera ));
+
+			var ambient = new THREE.AmbientLight( 0x404040 ); // soft white light
+			p.add( ambient );
+		}
+
+		function create_ground(p) {
+			p.add(Things.ground = new THREE.Mesh( Geo.ground, Mat.ground ));
+			Things.ground.rotation.z = 0.2;
+		}
+
+		function create_stack(p, x, y) {
+			var stack;
+			var name = 'stack_'+x+'_'+y;
+			p.add(stack = Things[name] = new THREE.Object3D());
+			stack.position.z = -1;
+			for(var i = 0; i < 5; i++) {
+				var slab = new THREE.Mesh( Geo.slab, Mat.red );
+				stack.add(slab);
+				slab.position.z = -i*SLAB_HEIGHT;
+			}
+			stack.position.x = x*CELL_SIZE;
+			stack.position.y = y*CELL_SIZE;
+			stack.x = x;
+			stack.y = y;
+		}
+
+		function apply_shadows(p) {
+			p.castShadow = true;
+			p.receiveShadow = true;
+			each(p.children, c => apply_shadows(c));
+		}
+
+		function create_player(p) {
+			var player;
+			p.add(player = Things.player = new THREE.Object3D());
+			player.add(player.base = new THREE.Mesh( Geo.player_base, Mat.yellow ));
+			player.add(player.col0 = new THREE.Mesh( Geo.player_grabber, Mat.yellow ));
+			player.add(player.col1 = new THREE.Mesh( Geo.player_grabber, Mat.yellow ));
+			player.add(player.col2 = new THREE.Mesh( Geo.player_grabber, Mat.yellow ));
+			player.add(player.col3 = new THREE.Mesh( Geo.player_grabber, Mat.yellow ));
+			player.col0.position.set(-CELL_SIZE*0.5, -CELL_SIZE*0.5, 0);
+			player.col1.position.set(CELL_SIZE*0.5, -CELL_SIZE*0.5, 0);
+			player.col2.position.set(CELL_SIZE*0.5, CELL_SIZE*0.5, 0);
+			player.col3.position.set(-CELL_SIZE*0.5, CELL_SIZE*0.5, 0);
+			player.gridx = 0;
+			player.gridy = 0;
+			player.target_pos = { x : 0, y : 0, z : 0 };
+		}
+
+		function create_level() {
+			Stage.root.clear();
+			Things = {};
+			Stage.camera.position.y = -15;
+			Stage.camera.position.z = -15;
+			Stage.camera.lookAt(0,0,0);
+			create_lights(Stage.root);
+			create_ground(Stage.root);
+			create_player(Things.ground);
+			create_stack(Things.ground, 1, 1);
+			create_stack(Things.ground, -2, -3);
+			//apply_shadows(Stage.root);
+		}
+
+		function move_player_by(rx, ry) {
+			Things.player.gridx += rx;
+			Things.player.gridy += ry;
+			Things.player.target_pos.x = Things.player.gridx*CELL_SIZE;
+			Things.player.target_pos.y = Things.player.gridy*CELL_SIZE;
+		}
+
+		$(function() {
+			Stage = ThreeStage.create({
+				THREE : THREE,
+				smoothScroll : 0.85,
+			});
+			Game.init(Stage, $('#frame-rate'));
+			Stage.start();
+			$(document).on('keydown', (e) => {
+				KeyStates[e.key] = true;
+				if(KeyEvents[e.key+'_down'])
+					KeyEvents[e.key+'_down']();
+			});
+			$(document).on('keyup', (e) => { delete KeyStates[e.key]; });
+
+			Geo.ground = new THREE.BoxBufferGeometry( 40, 40, 0.1 );
+			Geo.slab = new THREE.BoxBufferGeometry( CELL_SIZE*0.8, CELL_SIZE*0.8, SLAB_HEIGHT*0.8 );
+			Geo.player_base = new THREE.BoxBufferGeometry( CELL_SIZE, CELL_SIZE, SLAB_HEIGHT*0.4 );
+			Geo.player_grabber = new THREE.BoxBufferGeometry( CELL_SIZE*0.1, CELL_SIZE*0.1, SLAB_HEIGHT*10 );
+
+			Mat.ground = new THREE.MeshStandardMaterial( {color: 0xaaccaa, metalness : 0.15, roughness : 0.05, } );
+			Mat.red = new THREE.MeshStandardMaterial( {color: 0xff4444, metalness : 0.15, roughness : 0.05, } );
+			Mat.green = new THREE.MeshStandardMaterial( {color: 0x44ff44, metalness : 0.15, roughness : 0.05, } );
+			Mat.blue = new THREE.MeshStandardMaterial( {color: 0x4444ff, metalness : 0.15, roughness : 0.05, } );
+			Mat.yellow = new THREE.MeshStandardMaterial( {color: 0xffff44, metalness : 0.15, roughness : 0.05, } );
+
+			create_level();
+
+			Stage.animate(function(dt) {
+
+				each(KeyStates, (_v, key) => {
+					if(KeyEvents[key])
+						KeyEvents[key]();
+				});
+
+				Things.player.position.x = Things.player.position.x*0.8 + Things.player.target_pos.x*0.2;
+				Things.player.position.y = Things.player.position.y*0.8 + Things.player.target_pos.y*0.2;
+
+				return(true);
+			});
+
+		});
+		</script>
+
+	</body>
+</html>
